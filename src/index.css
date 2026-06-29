@@ -1,0 +1,76 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Amiri:wght@400;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: transparent;
+  user-select: none;
+  overflow: hidden;
+  font-family: 'Inter', 'Segoe UI', Tahoma, sans-serif;
+}
+
+#root {
+  width: 100%;
+  height: 100vh;
+}
+
+/* Custom scrollbar for the prayer list */
+.prayer-list::-webkit-scrollbar {
+  width: 2px;
+}
+
+.prayer-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.prayer-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 1px;
+}
+
+/* Glass pulse animation for next prayer */
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(110, 231, 183, 0.1), inset 0 0 8px rgba(110, 231, 183, 0.05);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(110, 231, 183, 0.2), inset 0 0 12px rgba(110, 231, 183, 0.08);
+  }
+}
+
+.next-prayer-glow {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* Fade-in animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.prayer-row {
+  animation: fadeInUp 0.4s ease-out forwards;
+  opacity: 0;
+}
+
+.prayer-row:nth-child(1) { animation-delay: 0.05s; }
+.prayer-row:nth-child(2) { animation-delay: 0.10s; }
+.prayer-row:nth-child(3) { animation-delay: 0.15s; }
+.prayer-row:nth-child(4) { animation-delay: 0.20s; }
+.prayer-row:nth-child(5) { animation-delay: 0.25s; }
+.prayer-row:nth-child(6) { animation-delay: 0.30s; }
+.prayer-row:nth-child(7) { animation-delay: 0.35s; }
