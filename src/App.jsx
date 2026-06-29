@@ -1,38 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 
-// Beirut June 2026 prayer timetable
-const PRAYER_TIMES = {
-  1:  { Imsak: '3:48', Fajr: '4:00', Sunrise: '5:28', Dhuhr: '12:36', Asr: '16:21', Maghrib: '20:03', Isha: '21:06' },
-  2:  { Imsak: '3:48', Fajr: '3:59', Sunrise: '5:28', Dhuhr: '12:36', Asr: '16:21', Maghrib: '20:04', Isha: '21:07' },
-  3:  { Imsak: '3:47', Fajr: '3:59', Sunrise: '5:28', Dhuhr: '12:36', Asr: '16:21', Maghrib: '20:05', Isha: '21:08' },
-  4:  { Imsak: '3:47', Fajr: '3:58', Sunrise: '5:28', Dhuhr: '12:36', Asr: '16:21', Maghrib: '20:05', Isha: '21:08' },
-  5:  { Imsak: '3:47', Fajr: '3:58', Sunrise: '5:27', Dhuhr: '12:36', Asr: '16:21', Maghrib: '20:06', Isha: '21:09' },
-  6:  { Imsak: '3:46', Fajr: '3:58', Sunrise: '5:27', Dhuhr: '12:37', Asr: '16:22', Maghrib: '20:06', Isha: '21:10' },
-  7:  { Imsak: '3:46', Fajr: '3:57', Sunrise: '5:27', Dhuhr: '12:37', Asr: '16:22', Maghrib: '20:07', Isha: '21:10' },
-  8:  { Imsak: '3:46', Fajr: '3:57', Sunrise: '5:27', Dhuhr: '12:37', Asr: '16:22', Maghrib: '20:07', Isha: '21:11' },
-  9:  { Imsak: '3:45', Fajr: '3:57', Sunrise: '5:27', Dhuhr: '12:37', Asr: '16:22', Maghrib: '20:08', Isha: '21:11' },
-  10: { Imsak: '3:45', Fajr: '3:56', Sunrise: '5:27', Dhuhr: '12:37', Asr: '16:22', Maghrib: '20:08', Isha: '21:12' },
-  11: { Imsak: '3:45', Fajr: '3:56', Sunrise: '5:27', Dhuhr: '12:38', Asr: '16:23', Maghrib: '20:09', Isha: '21:13' },
-  12: { Imsak: '3:45', Fajr: '3:56', Sunrise: '5:27', Dhuhr: '12:38', Asr: '16:23', Maghrib: '20:09', Isha: '21:13' },
-  13: { Imsak: '3:45', Fajr: '3:56', Sunrise: '5:27', Dhuhr: '12:38', Asr: '16:23', Maghrib: '20:10', Isha: '21:14' },
-  14: { Imsak: '3:45', Fajr: '3:56', Sunrise: '5:27', Dhuhr: '12:38', Asr: '16:23', Maghrib: '20:10', Isha: '21:14' },
-  15: { Imsak: '3:45', Fajr: '3:56', Sunrise: '5:27', Dhuhr: '12:38', Asr: '16:23', Maghrib: '20:11', Isha: '21:14' },
-  16: { Imsak: '3:45', Fajr: '3:56', Sunrise: '5:27', Dhuhr: '12:39', Asr: '16:24', Maghrib: '20:11', Isha: '21:15' },
-  17: { Imsak: '3:45', Fajr: '3:56', Sunrise: '5:27', Dhuhr: '12:39', Asr: '16:24', Maghrib: '20:11', Isha: '21:15' },
-  18: { Imsak: '3:45', Fajr: '3:56', Sunrise: '5:27', Dhuhr: '12:39', Asr: '16:24', Maghrib: '20:12', Isha: '21:15' },
-  19: { Imsak: '3:45', Fajr: '3:56', Sunrise: '5:27', Dhuhr: '12:39', Asr: '16:24', Maghrib: '20:12', Isha: '21:16' },
-  20: { Imsak: '3:45', Fajr: '3:56', Sunrise: '5:28', Dhuhr: '12:40', Asr: '16:25', Maghrib: '20:12', Isha: '21:16' },
-  21: { Imsak: '3:45', Fajr: '3:57', Sunrise: '5:28', Dhuhr: '12:40', Asr: '16:25', Maghrib: '20:12', Isha: '21:16' },
-  22: { Imsak: '3:45', Fajr: '3:57', Sunrise: '5:28', Dhuhr: '12:40', Asr: '16:25', Maghrib: '20:13', Isha: '21:16' },
-  23: { Imsak: '3:46', Fajr: '3:57', Sunrise: '5:28', Dhuhr: '12:40', Asr: '16:25', Maghrib: '20:13', Isha: '21:17' },
-  24: { Imsak: '3:46', Fajr: '3:57', Sunrise: '5:28', Dhuhr: '12:40', Asr: '16:25', Maghrib: '20:13', Isha: '21:17' },
-  25: { Imsak: '3:46', Fajr: '3:58', Sunrise: '5:29', Dhuhr: '12:41', Asr: '16:26', Maghrib: '20:13', Isha: '21:17' },
-  26: { Imsak: '3:47', Fajr: '3:58', Sunrise: '5:29', Dhuhr: '12:41', Asr: '16:26', Maghrib: '20:13', Isha: '21:17' },
-  27: { Imsak: '3:47', Fajr: '3:58', Sunrise: '5:29', Dhuhr: '12:41', Asr: '16:26', Maghrib: '20:13', Isha: '21:17' },
-  28: { Imsak: '3:47', Fajr: '3:59', Sunrise: '5:30', Dhuhr: '12:41', Asr: '16:26', Maghrib: '20:13', Isha: '21:17' },
-  29: { Imsak: '3:48', Fajr: '3:59', Sunrise: '5:30', Dhuhr: '12:41', Asr: '16:26', Maghrib: '20:13', Isha: '21:17' },
-  30: { Imsak: '3:48', Fajr: '4:00', Sunrise: '5:31', Dhuhr: '12:42', Asr: '16:27', Maghrib: '20:13', Isha: '21:17' },
-}
+// Prayer times will be fetched directly from Almanar website
 
 const ARABIC_NAMES = {
   Imsak: 'الإمساك',
@@ -73,11 +41,37 @@ function PinIcon({ isPinned, onClick }) {
   )
 }
 
+function SpeakerIcon({ enabled, onClick }) {
+  return (
+    <div 
+      onClick={onClick}
+      style={{ WebkitAppRegion: 'no-drag' }}
+      className={`cursor-pointer transition-colors p-1 rounded hover:bg-white/10 ${enabled ? 'text-emerald-400' : 'text-gray-500'}`}
+      title={enabled ? "كتم الصوت" : "تفعيل الصوت"}
+    >
+      {enabled ? (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+        </svg>
+      ) : (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+          <line x1="23" y1="9" x2="17" y2="15"></line>
+          <line x1="17" y1="9" x2="23" y2="15"></line>
+        </svg>
+      )}
+    </div>
+  )
+}
+
 // Returns the name of the next upcoming prayer (skips Imsak and Sunrise)
 function getNextPrayer(times) {
   const now = new Date()
   const current = now.getHours() * 60 + now.getMinutes()
   for (const name of PRAYERS_ONLY) {
+    if (!times[name]) continue;
     const [h, m] = times[name].split(':').map(Number)
     if (h * 60 + m > current) return name
   }
@@ -85,6 +79,7 @@ function getNextPrayer(times) {
 }
 
 function getRemainingTime(times, nextPrayer) {
+  if (!times[nextPrayer]) return '0h 0m'
   const now = new Date()
   const current = now.getHours() * 60 + now.getMinutes()
   const [h, m] = times[nextPrayer].split(':').map(Number)
@@ -101,31 +96,108 @@ export default function App() {
   const [isPinned, setIsPinned] = useState(false)
   const [fetchedTimes, setFetchedTimes] = useState(null)
 
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    const saved = localStorage.getItem('soundEnabled')
+    return saved !== null ? JSON.parse(saved) : true
+  })
+  
+  const lastNotified = useRef(null)
+  const audioRef = useRef(new Audio('./adhan.mp3'))
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (audioRef.current && !audioRef.current.paused) {
+          audioRef.current.pause()
+          audioRef.current.currentTime = 0
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  useEffect(() => {
+    localStorage.setItem('soundEnabled', JSON.stringify(soundEnabled))
+  }, [soundEnabled])
+
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000)
     return () => clearInterval(id)
   }, [])
 
+  const [fetchError, setFetchError] = useState(null)
+
   useEffect(() => {
     // Fetch live prayer times from the Almanar scraper in main process
     if (window.electron?.getPrayerTimes) {
       window.electron.getPrayerTimes().then(times => {
-        if (times && Object.keys(times).length > 0) {
+        if (times && times.error) {
+          setFetchError(`Main Process: ${times.error}`)
+        } else if (times && Object.keys(times).length > 0) {
           setFetchedTimes(times)
+          setFetchError(null)
+        } else {
+          setFetchError('Returned empty or null')
         }
+      }).catch(err => {
+        setFetchError(err.toString())
       })
+    } else {
+      setFetchError(`window.electron is ${typeof window.electron}`)
     }
   }, [])
 
-  const day = now.getDate()
-  const times = fetchedTimes || PRAYER_TIMES[day] || {}
+  const times = fetchedTimes || {}
   const nextPrayer = useMemo(() => getNextPrayer(times), [times, now])
+
+  useEffect(() => {
+    if (now.getSeconds() === 0) {
+      const currentTime = now.getHours() * 60 + now.getMinutes()
+      for (const name of PRAYERS_ONLY) {
+        if (!times[name]) continue
+        const [h, m] = times[name].split(':').map(Number)
+        if (h * 60 + m === currentTime) {
+          const notificationId = `${now.toDateString()}-${name}`
+          if (lastNotified.current !== notificationId) {
+            lastNotified.current = notificationId
+            
+            window.electron?.showNotification({
+              title: 'حان موعد الصلاة',
+              body: `حان الآن موعد صلاة ${ARABIC_NAMES[name]}`,
+              silent: true
+            })
+            
+            if (soundEnabled) {
+              audioRef.current.currentTime = 0
+              audioRef.current.play().catch(e => console.error('Audio play failed:', e))
+            }
+          }
+        }
+      }
+    }
+  }, [now, times, soundEnabled])
   const remaining = useMemo(() => getRemainingTime(times, nextPrayer), [times, nextPrayer, now])
 
   const togglePin = () => {
     const newPinned = !isPinned;
     setIsPinned(newPinned);
     window.electron?.togglePin(newPinned);
+  }
+
+  if (!fetchedTimes) {
+    return (
+      <div
+        className="w-[260px] h-[300px] rounded-2xl flex flex-col items-center justify-center p-4"
+        style={{
+          background: 'linear-gradient(160deg, rgba(20, 33, 27, 0.92) 0%, rgba(12, 22, 16, 0.88) 100%)',
+          backdropFilter: 'blur(24px)', border: '1px solid rgba(255,255,255,0.06)'
+        }}
+      >
+        <div className="text-emerald-400/70 animate-pulse text-sm mb-2">جاري الاتصال...</div>
+        {fetchError && <div className="text-xs text-red-400/80 text-center">{fetchError}</div>}
+      </div>
+    )
   }
 
   const dateStr = now.toLocaleDateString('ar-LB', {
@@ -163,12 +235,22 @@ export default function App() {
         className="text-center mb-3 pb-3 relative"
         style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
       >
-        <div className="absolute left-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute left-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
           <PinIcon isPinned={isPinned} onClick={togglePin} />
+          <SpeakerIcon enabled={soundEnabled} onClick={() => setSoundEnabled(!soundEnabled)} />
         </div>
         <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400 mb-1">
           <CrescentIcon />
           <span>{dateStr}</span>
+
+          {fetchError && (
+            <span 
+              className="text-[10px] text-red-400 font-semibold bg-red-400/10 px-1.5 rounded-full"
+              title={fetchError}
+            >
+              {fetchError.substring(0, 20)}...
+            </span>
+          )}
         </div>
         <div className="text-2xl font-semibold text-white tracking-wide tabular-nums">
           {timeStr}

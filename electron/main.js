@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, screen, globalShortcut } from 'electron'
+import { app, BrowserWindow, ipcMain, screen, globalShortcut, Notification } from 'electron'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import * as cheerio from 'cheerio'
@@ -24,12 +24,28 @@ function createWindow() {
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
+      autoplayPolicy: 'no-user-gesture-required',
     },
   })
 
   // In production, load the built files
   // In development, load from Vite dev server
   win.loadFile(join(__dirname, '../dist/index.html'))
+
+  win.webContents.on('preload-error', (event, preloadPath, error) => {
+    console.error('\n--- PRELOAD ERROR ---')
+    console.error(preloadPath)
+    console.error(error)
+    console.error('---------------------\n')
+  })
+
+  win.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    if (level >= 2) { // 2 = warning, 3 = error
+      console.error(`[RENDERER ERROR] ${message} (Line ${line})`)
+    } else {
+      console.log(`[RENDERER] ${message}`)
+    }
+  })
 }
 
 app.whenReady().then(() => {
@@ -64,6 +80,13 @@ ipcMain.on('toggle-pin', (_, isPinned) => {
   win.setAlwaysOnTop(isPinned)
 })
 
+// Show system notification
+ipcMain.on('show-notification', (_, { title, body, silent }) => {
+  if (Notification.isSupported()) {
+    new Notification({ title, body, silent }).show()
+  }
+})
+
 // Scrape prayer times from Almanar
 ipcMain.handle('get-prayer-times', async () => {
   try {
@@ -94,7 +117,7 @@ ipcMain.handle('get-prayer-times', async () => {
     return times;
   } catch (error) {
     console.error('Error fetching prayer times:', error);
-    return null;
+    return { error: error.toString() };
   }
 });
 
