@@ -2,7 +2,7 @@
   "name": "prayer-widget",
   "version": "1.0.0",
   "private": true,
-  "description": "Islamic Prayer Times Desktop Widget for Windows 11",
+  "description": "Islamic Prayer Times Desktop Widget for macOS & Windows 11",
   "main": "electron/main.js",
   "type": "module",
   "scripts": {
@@ -10,11 +10,26 @@
     "build": "vite build",
     "electron": "electron .",
     "start": "vite build && electron .",
-    "dist": "vite build && electron-builder"
+    "dist": "vite build && electron-builder",
+    "dist:mac": "vite build && electron-builder --mac",
+    "dist:mac:arm64": "vite build && electron-builder --mac --arm64",
+    "dist:mac:x64": "vite build && electron-builder --mac --x64",
+    "dist:win": "vite build && electron-builder --win"
   },
   "build": {
     "appId": "com.prayer.widget",
     "productName": "Prayer Widget",
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.lifestyle",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "darkModeSupport": true
+    },
     "win": {
       "target": "nsis"
     },

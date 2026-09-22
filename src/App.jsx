@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 
 // Prayer times will be fetched directly from Almanar website
 
@@ -15,6 +15,8 @@ const ARABIC_NAMES = {
 const PRAYER_ORDER = ['Imsak', 'Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']
 const PRAYERS_ONLY = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']
 
+const ARABIC_FONT = "'Amiri', -apple-system, BlinkMacSystemFont, 'Geeza Pro', 'Traditional Arabic', 'Segoe UI', Tahoma, sans-serif"
+
 // SVG crescent icon
 function CrescentIcon() {
   return (
@@ -30,8 +32,8 @@ function PinIcon({ isPinned, onClick }) {
     <div 
       onClick={onClick}
       style={{ WebkitAppRegion: 'no-drag' }}
-      className={`cursor-pointer transition-colors p-1 rounded hover:bg-white/10 ${isPinned ? 'text-emerald-400' : 'text-gray-500'}`}
-      title={isPinned ? "إلغاء التثبيت" : "تثبيت على الشاشة"}
+      className={`cursor-pointer transition-colors p-1 rounded hover:bg-white/10 ${isPinned ? 'text-emerald-400' : 'text-gray-400 hover:text-white'}`}
+      title={isPinned ? "إلغاء التثبيت" : "تثبيت في المقدمة"}
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 17v5" />
@@ -46,8 +48,8 @@ function SpeakerIcon({ enabled, onClick }) {
     <div 
       onClick={onClick}
       style={{ WebkitAppRegion: 'no-drag' }}
-      className={`cursor-pointer transition-colors p-1 rounded hover:bg-white/10 ${enabled ? 'text-emerald-400' : 'text-gray-500'}`}
-      title={enabled ? "كتم الصوت" : "تفعيل الصوت"}
+      className={`cursor-pointer transition-colors p-1 rounded hover:bg-white/10 ${enabled ? 'text-emerald-400' : 'text-gray-400 hover:text-white'}`}
+      title={enabled ? "كتم صوت الأذان" : "تفعيل صوت الأذان"}
     >
       {enabled ? (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -66,12 +68,28 @@ function SpeakerIcon({ enabled, onClick }) {
   )
 }
 
+function CloseIcon({ onClick }) {
+  return (
+    <div 
+      onClick={onClick}
+      style={{ WebkitAppRegion: 'no-drag' }}
+      className="cursor-pointer transition-colors p-1 rounded hover:bg-white/10 text-gray-400 hover:text-red-400"
+      title="إخفاء التطبيق (Hide)"
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    </div>
+  )
+}
+
 // Returns the name of the next upcoming prayer (skips Imsak and Sunrise)
 function getNextPrayer(times) {
   const now = new Date()
   const current = now.getHours() * 60 + now.getMinutes()
   for (const name of PRAYERS_ONLY) {
-    if (!times[name]) continue;
+    if (!times[name]) continue
     const [h, m] = times[name].split(':').map(Number)
     if (h * 60 + m > current) return name
   }
@@ -95,6 +113,7 @@ export default function App() {
   const [isHovering, setIsHovering] = useState(false)
   const [isPinned, setIsPinned] = useState(false)
   const [fetchedTimes, setFetchedTimes] = useState(null)
+  const [fetchError, setFetchError] = useState(null)
 
   const [soundEnabled, setSoundEnabled] = useState(() => {
     const saved = localStorage.getItem('soundEnabled')
@@ -103,6 +122,25 @@ export default function App() {
   
   const lastNotified = useRef(null)
   const audioRef = useRef(new Audio('./adhan.mp3'))
+
+  const fetchPrayers = useCallback(() => {
+    if (window.electron?.getPrayerTimes) {
+      window.electron.getPrayerTimes().then(times => {
+        if (times && times.error) {
+          setFetchError(`Main Process: ${times.error}`)
+        } else if (times && Object.keys(times).length > 0) {
+          setFetchedTimes(times)
+          setFetchError(null)
+        } else {
+          setFetchError('Returned empty or null')
+        }
+      }).catch(err => {
+        setFetchError(err.toString())
+      })
+    } else {
+      setFetchError(`window.electron is ${typeof window.electron}`)
+    }
+  }, [])
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -126,31 +164,36 @@ export default function App() {
     return () => clearInterval(id)
   }, [])
 
-  const [fetchError, setFetchError] = useState(null)
-
+  // Initial fetch and hourly refresh
   useEffect(() => {
-    // Fetch live prayer times from the Almanar scraper in main process
-    if (window.electron?.getPrayerTimes) {
-      window.electron.getPrayerTimes().then(times => {
-        if (times && times.error) {
-          setFetchError(`Main Process: ${times.error}`)
-        } else if (times && Object.keys(times).length > 0) {
-          setFetchedTimes(times)
-          setFetchError(null)
-        } else {
-          setFetchError('Returned empty or null')
-        }
-      }).catch(err => {
-        setFetchError(err.toString())
-      })
-    } else {
-      setFetchError(`window.electron is ${typeof window.electron}`)
+    fetchPrayers()
+    const interval = setInterval(fetchPrayers, 30 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [fetchPrayers])
+
+  // Listen to IPC events from main process (Tray or Menu actions)
+  useEffect(() => {
+    const unlistenPin = window.electron?.onTogglePinFromMain?.((pinned) => {
+      setIsPinned(pinned)
+    })
+    const unlistenSound = window.electron?.onToggleSoundFromMain?.(() => {
+      setSoundEnabled(prev => !prev)
+    })
+    const unlistenRefresh = window.electron?.onRefreshFromMain?.(() => {
+      fetchPrayers()
+    })
+
+    return () => {
+      unlistenPin?.()
+      unlistenSound?.()
+      unlistenRefresh?.()
     }
-  }, [])
+  }, [fetchPrayers])
 
   const times = fetchedTimes || {}
   const nextPrayer = useMemo(() => getNextPrayer(times), [times, now])
 
+  // Trigger Adhan notification and audio playback
   useEffect(() => {
     if (now.getSeconds() === 0) {
       const currentTime = now.getHours() * 60 + now.getMinutes()
@@ -177,24 +220,37 @@ export default function App() {
       }
     }
   }, [now, times, soundEnabled])
+
   const remaining = useMemo(() => getRemainingTime(times, nextPrayer), [times, nextPrayer, now])
 
   const togglePin = () => {
-    const newPinned = !isPinned;
-    setIsPinned(newPinned);
-    window.electron?.togglePin(newPinned);
+    const newPinned = !isPinned
+    setIsPinned(newPinned)
+    window.electron?.togglePin(newPinned)
+  }
+
+  const handleContextMenu = (e) => {
+    e.preventDefault()
+    window.electron?.showContextMenu()
   }
 
   if (!fetchedTimes) {
     return (
       <div
-        className="w-[260px] h-[300px] rounded-2xl flex flex-col items-center justify-center p-4"
+        className="w-[260px] h-[300px] rounded-2xl flex flex-col items-center justify-center p-4 select-none shadow-2xl"
+        onContextMenu={handleContextMenu}
         style={{
-          background: 'linear-gradient(160deg, rgba(20, 33, 27, 0.92) 0%, rgba(12, 22, 16, 0.88) 100%)',
-          backdropFilter: 'blur(24px)', border: '1px solid rgba(255,255,255,0.06)'
+          background: 'linear-gradient(160deg, rgba(20, 33, 27, 0.94) 0%, rgba(12, 22, 16, 0.90) 100%)',
+          backdropFilter: 'blur(28px)',
+          WebkitBackdropFilter: 'blur(28px)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          WebkitAppRegion: 'drag',
         }}
       >
-        <div className="text-emerald-400/70 animate-pulse text-sm mb-2">جاري الاتصال...</div>
+        <div className="text-emerald-400 animate-pulse text-sm mb-2" style={{ fontFamily: ARABIC_FONT }}>
+          جاري الاتصال وتحميل المواقيت...
+        </div>
         {fetchError && <div className="text-xs text-red-400/80 text-center">{fetchError}</div>}
       </div>
     )
@@ -215,31 +271,36 @@ export default function App() {
 
   return (
     <div
-      className="w-[260px] rounded-2xl p-4 select-none transition-shadow duration-300 relative group"
+      className="w-[260px] rounded-2xl p-4 select-none transition-all duration-300 relative group"
+      onContextMenu={handleContextMenu}
       style={{
         WebkitAppRegion: isPinned ? 'no-drag' : 'drag',
-        background: 'linear-gradient(160deg, rgba(20, 33, 27, 0.92) 0%, rgba(12, 22, 16, 0.88) 100%)',
-        backdropFilter: 'blur(24px)',
-        WebkitBackdropFilter: 'blur(24px)',
-        border: '1px solid rgba(255,255,255,0.06)',
+        background: 'linear-gradient(160deg, rgba(20, 33, 27, 0.94) 0%, rgba(12, 22, 16, 0.90) 100%)',
+        backdropFilter: 'blur(28px)',
+        WebkitBackdropFilter: 'blur(28px)',
+        border: '1px solid rgba(255,255,255,0.08)',
         boxShadow: isHovering
-          ? '0 8px 40px rgba(0,0,0,0.5), 0 0 20px rgba(110,231,183,0.08), inset 0 1px 0 rgba(255,255,255,0.05)'
-          : '0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)',
+          ? '0 12px 48px rgba(0,0,0,0.6), 0 0 24px rgba(110,231,183,0.1), inset 0 1px 0 rgba(255,255,255,0.08)'
+          : '0 8px 32px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05)',
         direction: 'rtl',
       }}
       onMouseLeave={() => setIsHovering(false)}
       onMouseEnter={() => setIsHovering(true)}
     >
-      {/* Header: crescent + date + live clock */}
+      {/* Header: crescent + date + live clock + controls */}
       <div
         className="text-center mb-3 pb-3 relative"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+        style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}
       >
-        <div className="absolute left-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+        <div className="absolute left-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
           <PinIcon isPinned={isPinned} onClick={togglePin} />
           <SpeakerIcon enabled={soundEnabled} onClick={() => setSoundEnabled(!soundEnabled)} />
+          <CloseIcon onClick={() => window.electron?.hideWindow()} />
         </div>
-        <div className="flex items-center justify-center gap-1.5 text-xs text-gray-400 mb-1">
+        <div 
+          className="flex items-center justify-center gap-1.5 text-xs text-gray-400 mb-1"
+          style={{ fontFamily: ARABIC_FONT }}
+        >
           <CrescentIcon />
           <span>{dateStr}</span>
 
@@ -277,17 +338,17 @@ export default function App() {
               }`}
               style={{
                 background: isNext
-                  ? 'linear-gradient(135deg, rgba(110,231,183,0.15) 0%, rgba(110,231,183,0.05) 100%)'
+                  ? 'linear-gradient(135deg, rgba(110,231,183,0.18) 0%, rgba(110,231,183,0.06) 100%)'
                   : 'rgba(255,255,255,0.02)',
                 border: isNext
-                  ? '1px solid rgba(110,231,183,0.3)'
+                  ? '1px solid rgba(110,231,183,0.35)'
                   : '1px solid transparent',
               }}
             >
               <span
                 className="text-sm font-mono tabular-nums"
                 style={{
-                  color: isNext ? '#6ee7b7' : isPast ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.5)',
+                  color: isNext ? '#6ee7b7' : isPast ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.6)',
                   fontWeight: isNext ? 600 : 400,
                 }}
               >
@@ -296,10 +357,10 @@ export default function App() {
               <span
                 className="text-sm"
                 style={{
-                  fontFamily: "'Traditional Arabic', 'Segoe UI', Tahoma, sans-serif",
-                  color: isNext ? '#e2e8f0' : isPast ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.6)',
-                  fontWeight: isNext ? 700 : isNonPrayer ? 300 : 400,
-                  fontSize: isNext ? '0.9rem' : '0.8rem',
+                  fontFamily: ARABIC_FONT,
+                  color: isNext ? '#e2e8f0' : isPast ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.7)',
+                  fontWeight: isNext ? 700 : isNonPrayer ? 300 : 500,
+                  fontSize: isNext ? '0.95rem' : '0.85rem',
                 }}
               >
                 {ARABIC_NAMES[name]}
@@ -310,22 +371,22 @@ export default function App() {
       </div>
 
       {/* Next prayer footer with countdown */}
-      <div className="mt-3 pt-3 text-center" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="mt-3 pt-3 text-center" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="flex items-center justify-center gap-2">
-          <span className="text-xs" style={{ color: 'rgba(110,231,183,0.65)' }}>
+          <span className="text-xs" style={{ color: 'rgba(110,231,183,0.75)', fontFamily: ARABIC_FONT }}>
             الصلاة التالية:
           </span>
           <span
             className="text-sm font-semibold"
             style={{
-              fontFamily: "'Traditional Arabic', 'Segoe UI', Tahoma, sans-serif",
+              fontFamily: ARABIC_FONT,
               color: '#6ee7b7',
             }}
           >
             {ARABIC_NAMES[nextPrayer]}
           </span>
         </div>
-        <div className="text-[11px] mt-0.5" style={{ color: 'rgba(110,231,183,0.45)', direction: 'ltr' }}>
+        <div className="text-[11px] mt-0.5" style={{ color: 'rgba(110,231,183,0.5)', direction: 'ltr' }}>
           {remaining} متبقٍ
         </div>
       </div>
