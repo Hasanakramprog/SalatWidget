@@ -112,8 +112,27 @@ export default function App() {
   const [now, setNow] = useState(new Date())
   const [isHovering, setIsHovering] = useState(false)
   const [isPinned, setIsPinned] = useState(false)
-  const [fetchedTimes, setFetchedTimes] = useState(null)
+
+  // Initialize immediately with cached prayer times if available (instant boot recovery)
+  const [fetchedTimes, setFetchedTimes] = useState(() => {
+    try {
+      const cached = localStorage.getItem('cachedPrayerTimes')
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        if (parsed && typeof parsed === 'object' && Object.keys(parsed).length >= 5) {
+          return parsed
+        }
+      }
+    } catch {}
+    return null
+  })
+
   const [fetchError, setFetchError] = useState(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [retrySecondsLeft, setRetrySecondsLeft] = useState(null)
+
+  const retryTimeoutRef = useRef(null)
+  const retryCountdownRef = useRef(null)
 
   const [soundEnabled, setSoundEnabled] = useState(() => {
     const saved = localStorage.getItem('soundEnabled')
@@ -123,24 +142,63 @@ export default function App() {
   const lastNotified = useRef(null)
   const audioRef = useRef(new Audio('./adhan.mp3'))
 
-  const fetchPrayers = useCallback(() => {
+  const startAutoRetry = useCallback((seconds = 5) => {
+    if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current)
+    if (retryCountdownRef.current) clearInterval(retryCountdownRef.current)
+
+    setRetrySecondsLeft(seconds)
+    retryCountdownRef.current = setInterval(() => {
+      setRetrySecondsLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(retryCountdownRef.current)
+          return null
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    retryTimeoutRef.current = setTimeout(() => {
+      fetchPrayers(false)
+    }, seconds * 1000)
+  }, [])
+
+  const fetchPrayers = useCallback((isUserClick = false) => {
+    if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current)
+    if (retryCountdownRef.current) clearInterval(retryCountdownRef.current)
+    setRetrySecondsLeft(null)
+
+    setIsLoading(true)
     if (window.electron?.getPrayerTimes) {
       window.electron.getPrayerTimes().then(times => {
+        setIsLoading(false)
         if (times && times.error) {
           setFetchError(`Main Process: ${times.error}`)
-        } else if (times && Object.keys(times).length > 0) {
-          setFetchedTimes(times)
+          // Auto retry in 5s (particularly useful at boot time when Wi-Fi is connecting)
+          startAutoRetry(5)
+        } else if (times && Object.keys(times).length >= 5) {
+          const cleanTimes = {}
+          for (const key of PRAYER_ORDER) {
+            if (times[key]) cleanTimes[key] = times[key]
+          }
+          setFetchedTimes(cleanTimes)
           setFetchError(null)
+          try {
+            localStorage.setItem('cachedPrayerTimes', JSON.stringify(cleanTimes))
+          } catch {}
         } else {
-          setFetchError('Returned empty or null')
+          setFetchError('تعذر جلب المواقيت بشكل صحيح')
+          startAutoRetry(5)
         }
       }).catch(err => {
+        setIsLoading(false)
         setFetchError(err.toString())
+        startAutoRetry(5)
       })
     } else {
+      setIsLoading(false)
       setFetchError(`window.electron is ${typeof window.electron}`)
     }
-  }, [])
+  }, [startAutoRetry])
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -164,14 +222,43 @@ export default function App() {
     return () => clearInterval(id)
   }, [])
 
-  // Initial fetch and hourly refresh
+  // Auto-refresh immediately when crossing midnight into a new day
+  const prevDateRef = useRef(now.toDateString())
   useEffect(() => {
-    fetchPrayers()
-    const interval = setInterval(fetchPrayers, 30 * 60 * 1000)
+    const todayStr = now.toDateString()
+    if (prevDateRef.current !== todayStr) {
+      console.log('Day changed (midnight rollover), fetching new day prayer times:', todayStr)
+      prevDateRef.current = todayStr
+      fetchPrayers(false)
+    }
+  }, [now, fetchPrayers])
+
+  // Auto-refresh when internet connection is re-established (e.g. Wi-Fi connects after restart)
+  useEffect(() => {
+    const handleOnline = () => {
+      console.log('Network connected, refreshing prayer times...')
+      fetchPrayers(false)
+    }
+    window.addEventListener('online', handleOnline)
+    return () => window.removeEventListener('online', handleOnline)
+  }, [fetchPrayers])
+
+  // Cleanup auto-retry timers on unmount
+  useEffect(() => {
+    return () => {
+      if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current)
+      if (retryCountdownRef.current) clearInterval(retryCountdownRef.current)
+    }
+  }, [])
+
+  // Initial fetch and 30-minute refresh
+  useEffect(() => {
+    fetchPrayers(false)
+    const interval = setInterval(() => fetchPrayers(false), 30 * 60 * 1000)
     return () => clearInterval(interval)
   }, [fetchPrayers])
 
-  // Listen to IPC events from main process (Tray or Menu actions)
+  // Listen to IPC events from main process (Tray or Menu actions or Wake from sleep)
   useEffect(() => {
     const unlistenPin = window.electron?.onTogglePinFromMain?.((pinned) => {
       setIsPinned(pinned)
@@ -180,7 +267,7 @@ export default function App() {
       setSoundEnabled(prev => !prev)
     })
     const unlistenRefresh = window.electron?.onRefreshFromMain?.(() => {
-      fetchPrayers()
+      fetchPrayers(false)
     })
 
     return () => {
@@ -237,7 +324,7 @@ export default function App() {
   if (!fetchedTimes) {
     return (
       <div
-        className="w-[260px] h-[300px] rounded-2xl flex flex-col items-center justify-center p-4 select-none shadow-2xl"
+        className="w-[260px] min-h-[300px] rounded-2xl flex flex-col items-center justify-center p-5 select-none shadow-2xl text-center"
         onContextMenu={handleContextMenu}
         style={{
           background: 'linear-gradient(160deg, rgba(20, 33, 27, 0.94) 0%, rgba(12, 22, 16, 0.90) 100%)',
@@ -246,12 +333,42 @@ export default function App() {
           border: '1px solid rgba(255,255,255,0.08)',
           boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
           WebkitAppRegion: 'drag',
+          direction: 'rtl',
         }}
       >
-        <div className="text-emerald-400 animate-pulse text-sm mb-2" style={{ fontFamily: ARABIC_FONT }}>
-          جاري الاتصال وتحميل المواقيت...
+        <div className="w-10 h-10 mb-3 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+          <svg className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
         </div>
-        {fetchError && <div className="text-xs text-red-400/80 text-center">{fetchError}</div>}
+
+        <div className="text-emerald-400 font-medium text-sm mb-1.5" style={{ fontFamily: ARABIC_FONT }}>
+          {isLoading ? 'جاري الاتصال وتحميل المواقيت...' : 'تعذر تحميل المواقيت'}
+        </div>
+
+        {fetchError && (
+          <div className="text-xs text-red-400/90 mb-3 leading-relaxed max-w-[220px]">
+            {fetchError}
+          </div>
+        )}
+
+        {retrySecondsLeft && !isLoading && (
+          <div className="text-[11px] text-emerald-300/70 mb-3" style={{ fontFamily: ARABIC_FONT }}>
+            إعادة المحاولة تلقائياً خلال {retrySecondsLeft} ث...
+          </div>
+        )}
+
+        <button
+          onClick={() => fetchPrayers(true)}
+          disabled={isLoading}
+          className="px-4 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 active:scale-95 border border-emerald-500/30 text-emerald-300 text-xs font-medium flex items-center gap-1.5 transition-all cursor-pointer shadow-md disabled:opacity-50"
+          style={{ fontFamily: ARABIC_FONT, WebkitAppRegion: 'no-drag' }}
+        >
+          <svg className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          <span>{isLoading ? 'جاري المحاولة...' : 'إعادة المحاولة الآن'}</span>
+        </button>
       </div>
     )
   }
@@ -305,12 +422,17 @@ export default function App() {
           <span>{dateStr}</span>
 
           {fetchError && (
-            <span 
-              className="text-[10px] text-red-400 font-semibold bg-red-400/10 px-1.5 rounded-full"
-              title={fetchError}
+            <button
+              onClick={() => fetchPrayers(true)}
+              style={{ WebkitAppRegion: 'no-drag' }}
+              className="text-[10px] text-amber-400 hover:text-amber-300 font-medium bg-amber-400/10 hover:bg-amber-400/20 px-1.5 py-0.5 rounded-full flex items-center gap-1 transition-colors cursor-pointer"
+              title="المواقيت محفوظة محلياً (انقر للتحديث عبر الإنترنت)"
             >
-              {fetchError.substring(0, 20)}...
-            </span>
+              <svg className={`w-2.5 h-2.5 ${isLoading ? 'animate-spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>{isLoading ? 'تحديث...' : 'محفوظة'}</span>
+            </button>
           )}
         </div>
         <div className="text-2xl font-semibold text-white tracking-wide tabular-nums">
