@@ -123,7 +123,7 @@ function updateTrayMenu() {
       click: (item) => {
         app.setLoginItemSettings({
           openAtLogin: item.checked,
-          openAsHidden: process.platform === 'darwin',
+          openAsHidden: false,
           name: 'Prayer Widget',
         })
       }
@@ -251,7 +251,7 @@ ipcMain.on('show-context-menu', () => {
       click: (item) => {
         app.setLoginItemSettings({
           openAtLogin: item.checked,
-          openAsHidden: process.platform === 'darwin',
+          openAsHidden: false,
           name: 'Prayer Widget',
         })
       }
@@ -340,6 +340,6 @@ ipcMain.handle('get-prayer-times', async () => {
 // Auto-start configuration
 app.setLoginItemSettings({
   openAtLogin: true,
-  openAsHidden: process.platform === 'darwin',
+  openAsHidden: false,
   name: 'Prayer Widget',
 })
